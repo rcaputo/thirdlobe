@@ -1,0 +1,318 @@
+Concepts
+
+	An "arc mask" is an arc specification used to query for arcs.  They
+	usually have one or more wildcard parts.
+
+	For example: ()(is a type of)(verb) is an mask that matches arcs
+	in the database that are types of verbs.
+
+ThirdLobe::Parser::Factoid
+
+	This is the working title for the parser that replaces know-1's
+	parser.
+
+	Know's parser is based on the subjects that match ()(is a type of)
+	(verb).
+
+	The predicates that match those subjects are found in incoming text.
+	Everything left of the found predicate is considered to be a subject.
+	Text to the right is treated as an object.  The result is a new arc.
+
+	Given:
+		(is a type of)(is a type of)(verb)
+	Given:
+		(is)(is a type of)(verb)
+	Given:
+		Hard code that generates new subject/verb/object arcs from
+		subjects that are types of verbs.
+	Then:
+		Input "foo is bar" creates an arc: (foo)(is)(bar)
+	Then:
+		Input "moo is a type of verb" creates an arc: (moo)(is a type
+		of)(verb)
+	Then:
+		Input "foo moo bar" creates an arc: (foo)(moo)(bar)
+	... and so on.
+
+ThirdLobe::Parser::Command
+
+	This would be the parser that figures out commands from people.  The
+	idea's half baked, but I wanted to record it before it gets lost.
+	
+	In theory, it would collect the arcs matching ()(is a type of)
+	(command).  The subjects of these arcs would be used to find new
+	commands.
+
+		(@find)(is a type of)(command)
+		(@count)(is a type of)(command)
+
+	The parser would look for commands an the beginning of input.  The
+	remainder of the input would be treated as an argument to the
+	command.
+
+Qbot
+
+	Qbot is an infobot that searches for data on the web rather than in
+	a local database.  It can be quite useful, although noisy since it
+	returns a lot of data for each request.
+
+	The bot has parsers, based on an older MUD-like grammar project.
+	The parser has two sections:
+
+		Synonyms are defined as simple declarative statements.
+
+			to-be = is, are, was, were, am, has been, will be, has been
+
+			defines a synonym, "to-be", that can match any of "is", "are",
+			"was", and so on.
+
+		Transform and query rules use synonyms and patterns to detect
+		questions in the bot's input, translate them into Google queries,
+		and generate error messages in case of failure.
+
+			who [to-be] * of *
+				search: "3 4 5 2 /proper/"
+				failed: I don't know 1 3 4 5 2.
+
+		The previous transform matches "who is Joan of Arc".  Each
+		space-separate token in the match is also a backreference,
+		numbered from 1 to N according to its position in the pattern.  In
+		the above example:
+
+			1 = who
+			2 = is
+			3 = Joan
+			4 = of
+			5 = Arc
+
+		The generated Google search term is '"* is Joan of Arc"' (which is
+		flawed, but ignore that).  Furthermore, the wildcard in the search
+		results must be a proper noun.  That is, the first letter of the
+		name must be capitalized.
+
+		If no useful results come back, the error message will be "I don't
+		know who Joan of Arc is."
+
+About factoids.
+
+	Factoids need timestamps and source tagging.  We want to know where
+	data came from, and when it arrived.
+
+	(http://poe.perl.org/)    (is a type of)(source)
+	(nick!auth@host@network)  (is a type of)(source)
+	(1113614654)              (is a type of)(timestamp)
+
+	So storing a simple factoid like "pigs have wings" requires:
+
+		Store (pigs)(have)(wings).
+		Store ((pigs)(have)(wings))(was said at)(1113614654)
+		Store (((pigs)(have)(wings))(was said at)(1113614654))
+					(was said by)(someone)
+	
+	This is crazy.
+
+	"Simulating traditional tables" discusses this in depth.
+
+Simulating traditional tables.
+
+	Traditional tables got one up on triple stores: When you fetch a
+	record, you get all the associated fields.  This is totally unlike
+	triple stores, where you just get one little bit of a record.
+	Consider loading (pigs)(have)(wings) and all the associated text.
+
+	So how to genericize this and then subsume it into the library?  My
+	half baked idea is to have an (is a field of) predicate.
+
+		$predicate (is a field of) $arc_type
+
+	For example:
+
+		(was said at)(is a field of)(factoid)
+		(was said by)(is a field of)(factoid)
+
+	When storing a factoid like "pigs have wings", the system goes:
+
+		Store: (pigs)(have)(wings)
+		Store: ((pigs)(have)(wings))(is an instance of)(factoid)
+
+	And since it's a factoid, these "fields" are also added:
+
+		((pigs)(have)(wings))(was said at)(1113614654)
+		((pigs)(have)(wings))(was said by)(source)
+
+	This method has a serious problem.  The arc's source and timestamp
+	can't be correlated.  In SQL, for example, you would say:
+
+		SELECT factoid
+			WHERE
+						factoid.source = "source"
+				AND factoid.timestamp = 1113614654;
+
+	In ThirdLobe's ArcStore, you can't do that.  Why?  Because in the
+	previous example (pigs)(have)(wings) may be said several times by
+	several different people, but you can't triangulate an associated
+	time and person to identify a particular time it was said by them.
+
+	As shown in a previous section, the most obvious way to solve this
+	is to associate a factoid with a field, then associate that
+	association with the other field.  This would chain nastily until
+	all the associated fields are used.
+
+		(pigs)(have)(wings)   (1113614654)(is an instance of)(timestamp)
+			\                      /
+			 \                    /
+				(a)(was said at)(b)   (someone)(is an instance of)(source)
+							 \                       /
+								\                     /
+								 (a)(was said by)(b)
+
+	As said before, this is crazy.  Not only does it generate arbitrary,
+	nasty trees, but it also becomes ugly to query.
+
+	You want to know what was said by "someone" at or around
+	"1113614654"?  You'll need to:
+
+		Fetch: (someone)(is an instance of)(source)
+
+			$source = SELECT * FROM arc
+				WHERE
+							arc.sub = "someone"
+					AND arc.prd = "is an instance of"
+					AND arc.obj = "source";
+
+		Fetch: (1113614654)(is an instance of)(timestamp)
+
+			$time = SELECT * FROM arc
+				WHERE
+							arc.sub = "1113614654"
+					AND arc.prd = "is an instance of"
+					AND arc.obj = "source";
+	
+	Then you'll need to fetch:
+
+		()(was said at) $time
+
+			@said_at = SELECT * FROM arc
+				WHERE
+							arc.prd = "was said at"
+					AND arc.obj = $time;
+
+		()(was said by) $source
+
+			@name = SELECT * FROM arc
+				WHERE
+							arc.sub in @said_at
+							arc.prd = "was said by"
+					AND arc.obj = $source;
+
+	This is crazy, but at least it's possible.  It becomes worse as the
+	number of conditions increases.
+
+	So how do we get a highly optimized SQL engine to do all the work
+	for us?  Generate SQL with subselects on the fly!  I wonder how well
+	Postgres will handle that...
+
+		my @factoids = SELECT * FROM arc
+			WHERE arc.sub in (
+							SELECT * FROM arc
+							WHERE   arc.prd = "was said at"
+								AND   arc.obj = $time
+						)
+				AND arc.prd = "was said by"
+				AND arc.obj = $source;
+
+	That's not so bad, actually.
+
+Using record arcs.
+
+	Integral suggested using arcs to represent specific records, and
+	having all the fields of each record refer to that.
+
+	This idea falls down, because basically you're hanging all your
+	fields off the assertion that
+
+		(pigs)(have)(wings") is-a record;
+
+	Therefore two instances of the same record can't have different
+	supporting details, such as source or utterance time.
+
+	It's also silly because (pigs)(have)(wings) already is a record in
+	the arc database.  We don't need to formally say it.
+
+	What's really needed are primary keys for "record" assertions.  For
+	example:
+
+		(pigs)(have)(wings) has-id 42;
+
+	A new record is added every time someone asserts "pigs have wings".
+
+		(pigs)(have)(wings) has-id 43;
+		(pigs)(have)(wings) has-id 44;
+	
+	Fields can then be hung off a particular instance of an assertion.
+
+		((pigs)(have)(wings) has-id 42)(was said by)(someone)
+		((pigs)(have)(wings) has-id 43)(was said by)(someone else)
+
+	This is dangerously close to saying
+
+		((pigs)(have)(wings) uttered-at $time)(was said by)(someone)
+		((pigs)(have)(wings) uttered-at $time)(was said by)(someone else)
+
+	And its SQL look slike
+
+		my $rec_42 =
+			SELECT * FROM arc WHERE arc.prd = "has-id" AND arc.obj = "42";
+
+		my @fields_42 =
+			SELECT * FROM arc WHERE arc.sub = $rec_42;
+
+	That's rather tidy.
+
+	How to find record arcs with a certain timestamp?
+
+		my @arcs =
+			SELECT  *
+			FROM    arc
+			WHERE   arc.prd = "has-id"
+				AND   arc.obj in (
+								SELECT  arc.sub
+								FROM    arc
+								WHERE   arc.prd = "was said at"
+									AND   arc.prd = "1113614654"
+							)
+		;
+
+	How to find record arcs said by someone at a certain time?
+
+		my @arcs =
+			SELECT  *
+			FROM    arc
+			WHERE   arc.prd = "has-id"
+				AND   arc.obj in (
+								SELECT  arc.sub
+								FROM    arc
+								WHERE   arc.prd = "was said at"
+									AND   arc.prd = "1113614654"
+							)
+				AND   arc.obj in (
+								SELECT  arc.sub
+								FROM    arc
+								WHERE   arc.prd = "was said by"
+									AND   arc.prd = "someone"
+							)
+		;
+	
+	And thus the set intersection is done.
+
+Versioning.
+
+	High resolution versioning is a pain in the butt.
+
+	Essentially, each field attached to a record can have several
+	instances.  Each instance would be associated with a timestamp and a
+	username.  The youngest version of a field is current.
+
+		(record)(has-id)(42)
+
+	TODO - Finish this train of thought.
