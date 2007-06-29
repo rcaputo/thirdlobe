@@ -388,7 +388,7 @@ sub rebuild {
 	$dbh->do("DROP SEQUENCE node_seq_seq");
 	$dbh->do("CREATE SEQUENCE node_seq_seq");
 	$dbh->do(
-		<<'    END'
+		<<'		END'
 			CREATE TABLE node (
 				seq       INTEGER DEFAULT nextval('node_seq_seq') NOT NULL,
 				arc_seq   INTEGER           NOT NULL,
@@ -406,7 +406,7 @@ sub rebuild {
 	$dbh->do("DROP SEQUENCE arc_seq_seq");
 	$dbh->do("CREATE SEQUENCE arc_seq_seq");
 	$dbh->do(
-		<<'    END'
+		<<'		END'
 			CREATE TABLE arc (
 				seq INTEGER DEFAULT nextval('arc_seq_seq') NOT NULL,
 				sub_seq INTEGER NOT NULL,
