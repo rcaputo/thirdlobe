@@ -148,12 +148,14 @@ sub arc_store {
 		$obj = $self->anchor_store($object);
 	}
 
-	my $arc = $db->arc_from_arcs($sub, $prd, $obj);
-	unless ($arc) {
-		$arc = $db->arc_add($sub, $prd, $obj);
+	my @arcs = $db->arc_from_arcs($sub, $prd, $obj);
+	unless (@arcs) {
+		@arcs = $db->arc_add($sub, $prd, $obj);
 	}
 
-	return $arc;
+	die "@arcs" unless @arcs == 1;
+
+	return $arcs[0];
 }
 
 =head2 arc_fetch SUBJECT_TEXT, PREDICATE_TEXT, OBJECT_TEXT
