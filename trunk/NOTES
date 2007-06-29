@@ -1,320 +1,536 @@
 $Id$
 
-Concepts
+Schema
 
-	An "arc mask" is an arc specification used to query for arcs.  They
-	usually have one or more wildcard parts.
+	Third Lobe has two tables: Node and Arc.  Node rows describe
+	particular arcs ("anchor" arcs) with human-readable text.  Arcs
+	relate concepts to each other in three-part ("triple") form.
 
-	For example: ()(is a type of)(verb) is an mask that matches arcs
-	in the database that are types of verbs.
+	Node schema:
+		id      (32bit unsigned int)
+		arc_id  (32bit unsigned int)
+		text    (varchar 1024)
+
+	Arc schema:
+		id      (32bit unsigned int)
+		sub_id  (32bit unsigned int)
+		tag_id  (32bit unsigned int)
+		val_id  (32bit unsigned int)
+
+	Each arc row represents one of three types of information:
+
+	1. A node.  Nodes are represented by "anchor" arcs where sub_id,
+	tag_id, and val_id all equal 0.  There may be only one node per
+	anchor arc.  They are joined by node.arc_id = arc.id.
+
+	2. An instance of a concept, or a factoid.  Factoids are represented
+	by arcs with sub_id = 0, tag_id = id_of("type"), and val_id =
+	id_of("factoid").
+
+	3. Relationships between factoids.  These are represented by rows
+	where neither sub_id, tag_id, nor val_id = 0.
+
+Initial Data
+
+	The database must be primed with a minimal set of node and arc rows
+	(nodes and arcs) to function.  Likewise, there must be code to
+	interpret these first principles, otherwise the system cannot
+	function.
+
+	Here are the initial rows:
+
+		node
+			id  arc_id  text
+			1   1       instance of
+			2   2       factoid
+
+		arc
+			id  sub_id  tag_id  val_id  (meaning)
+			1   0       0       0       node: instance of
+			2   0       0       0       node: factoid
+
+Defining Concepts
+
+	Third Lobe will mainly receive its input from natural-language text
+	in one or more Human languages.  Domain-specific simplifications may
+	be used as a compromise between the full flexibility of, say,
+	English, and the unnatural rigidity of a strict command line
+	interface.
+
+	Input will be parsed through means currently unknown, hopefully
+	resulting in simplified representations which lose as little
+	information as possible.
+
+	Consider the assertion that "appointment xyz is at 12:30 on
+	Christmas day".  Parsers should dissect the assertion into four
+	basic aspects:
+
+	1. factoid type appointment.
+	2. factoid name xyz.
+	3. factoid time 12:30:00.
+	4. factoid date 2006-12-25.
+
+	These aspects will be exploded into the following nodes and arcs:
+
+		node
+			id  arc_id  text
+			3   4       type
+			4   5       appointment
+			5   7       name
+			6   8       xyz
+			7   10      time
+			8   11      12:30:00
+			9   13      date
+			10  14      2006-12-25
+
+		arc
+			id  sub_id  tag_id  val_id  (meaning)
+			3   0       1       2       arc 3 represents a factoid
+			4   0       0       0       node: type
+			5   0       0       0       node: appointment
+			6   3       4       5       factoid 3 is an appointment
+			7   0       0       0       node: name
+			8   0       0       0       node: xyz
+			9   3       7       8       factoid 3's name is "xyz"
+			10  0       0       0       node: time
+			11  0       0       0       node: 12:30:00
+			12  3       10      11      factoid 3's time is 12:30:00
+			13  0       0       0       node: date
+			14  0       0       0       node: 2006-12-25
+			15  3       13      14      factoid 3's date is 2006-12-25
+
+	As you can see, there's a lot of work to represent this.
+
+Relating Concepts
+
+	The ability to relate one concept to another is extremely useful.
+	For example, we may want to dissect the 2006-12-25 node into two
+	others:
+
+		node
+			id  arc_id  text
+			11  16      year
+			12  17      2006
+			13  19      month
+			14  20      12
+
+		arc
+			id  sub_id  tag_id  val_id  (meaning)
+			16  0       0       0       node: year
+			17  0       0       0       node: 2006
+			18  14      16      17      2006-12-25's year is 2006
+			19  0       0       0       node: month
+			20  0       0       0       node: 12
+			21  14      19      20      2006-12-25's month is 12
+
+Synonyms
+
+	Node synonyms can be defined by creating new nodes that refer to the
+	same anchor.  To make "December" a synonym for the number 12:
+
+		node
+			id  arc_id  text
+			15  20      December
+
+	Arcs represent concepts, and anchor arcs represent fundamental,
+	constant concepts.  Arc 20 represents the number 12, which may be a
+	month or simply a quantity.
+
+	TODO - This scheme for representing basic synonyms is flawed, since
+	"12" and "December" can have vastly different connotations depending
+	on their contexts.  "12" is not always a month, for example.  This
+	may require reintroducing the "predicate" concept: "month 12" is a
+	predicate, synonymous with anchor 20.
+
+... I'm heavily revising this.  Text beyond this point has not been
+edited this pass.
+
+Arc Masks
+
+	For the sake of documentation, arcs will often be illustrated using
+	node names rather than node IDs.  Node text is usually surrounded in
+	parentheses to disambiguate each field.  For example:
+	(subject)(tag)(value).
+
+
+
+
+
+	
+
+  An "arc mask" is an arc specification used to query for arcs.  They
+  usually have one or more wildcard parts.
+
+  For example: ()(is a type of)(verb) is an mask that matches arcs
+  in the database that are types of verbs.
 
 ThirdLobe::Parser::Factoid
 
-	This is the working title for the parser that replaces know-1's
-	parser.
+  This is the working title for the parser that replaces know-1's
+  parser.
 
-	Know's parser is based on the subjects that match ()(is a type of)
-	(verb).
+  Know's parser is based on the subjects that match ()(is a type of)
+  (verb).
 
-	The predicates that match those subjects are found in incoming text.
-	Everything left of the found predicate is considered to be a subject.
-	Text to the right is treated as an object.  The result is a new arc.
+  The predicates that match those subjects are found in incoming text.
+  Everything left of the found predicate is considered to be a subject.
+  Text to the right is treated as an object.  The result is a new arc.
 
-	Given:
-		(is a type of)(is a type of)(verb)
-	Given:
-		(is)(is a type of)(verb)
-	Given:
-		Hard code that generates new subject/verb/object arcs from
-		subjects that are types of verbs.
-	Then:
-		Input "foo is bar" creates an arc: (foo)(is)(bar)
-	Then:
-		Input "moo is a type of verb" creates an arc: (moo)(is a type
-		of)(verb)
-	Then:
-		Input "foo moo bar" creates an arc: (foo)(moo)(bar)
-	... and so on.
+  Given:
+    (is a type of)(is a type of)(verb)
+  Given:
+    (is)(is a type of)(verb)
+  Given:
+    Hard code that generates new subject/verb/object arcs from
+    subjects that are types of verbs.
+  Then:
+    Input "foo is bar" creates an arc: (foo)(is)(bar)
+  Then:
+    Input "moo is a type of verb" creates an arc: (moo)(is a type
+    of)(verb)
+  Then:
+    Input "foo moo bar" creates an arc: (foo)(moo)(bar)
+  ... and so on.
 
 ThirdLobe::Parser::Command
 
-	This would be the parser that figures out commands from people.  The
-	idea's half baked, but I wanted to record it before it gets lost.
-	
-	In theory, it would collect the arcs matching ()(is a type of)
-	(command).  The subjects of these arcs would be used to find new
-	commands.
+  This would be the parser that figures out commands from people.  The
+  idea's half baked, but I wanted to record it before it gets lost.
+  
+  In theory, it would collect the arcs matching ()(is a type of)
+  (command).  The subjects of these arcs would be used to find new
+  commands.
 
-		(@find)(is a type of)(command)
-		(@count)(is a type of)(command)
+    (@find)(is a type of)(command)
+    (@count)(is a type of)(command)
 
-	The parser would look for commands an the beginning of input.  The
-	remainder of the input would be treated as an argument to the
-	command.
+  The parser would look for commands an the beginning of input.  The
+  remainder of the input would be treated as an argument to the
+  command.
 
 Qbot
 
-	Qbot is an infobot that searches for data on the web rather than in
-	a local database.  It can be quite useful, although noisy since it
-	returns a lot of data for each request.
+  Qbot is an infobot that searches for data on the web rather than in
+  a local database.  It can be quite useful, although noisy since it
+  returns a lot of data for each request.
 
-	The bot has parsers, based on an older MUD-like grammar project.
-	The parser has two sections:
+  The bot has parsers, based on an older MUD-like grammar project.
+  The parser has two sections:
 
-		Synonyms are defined as simple declarative statements.
+    Synonyms are defined as simple declarative statements.
 
-			to-be = is, are, was, were, am, has been, will be, has been
+      to-be = is, are, was, were, am, has been, will be, has been
 
-			defines a synonym, "to-be", that can match any of "is", "are",
-			"was", and so on.
+      defines a synonym, "to-be", that can match any of "is", "are",
+      "was", and so on.
 
-		Transform and query rules use synonyms and patterns to detect
-		questions in the bot's input, translate them into Google queries,
-		and generate error messages in case of failure.
+    Transform and query rules use synonyms and patterns to detect
+    questions in the bot's input, translate them into Google queries,
+    and generate error messages in case of failure.
 
-			who [to-be] * of *
-				search: "3 4 5 2 /proper/"
-				failed: I don't know 1 3 4 5 2.
+      who [to-be] * of *
+        search: "3 4 5 2 /proper/"
+        failed: I don't know 1 3 4 5 2.
 
-		The previous transform matches "who is Joan of Arc".  Each
-		space-separate token in the match is also a backreference,
-		numbered from 1 to N according to its position in the pattern.  In
-		the above example:
+    The previous transform matches "who is Joan of Arc".  Each
+    space-separate token in the match is also a backreference,
+    numbered from 1 to N according to its position in the pattern.  In
+    the above example:
 
-			1 = who
-			2 = is
-			3 = Joan
-			4 = of
-			5 = Arc
+      1 = who
+      2 = is
+      3 = Joan
+      4 = of
+      5 = Arc
 
-		The generated Google search term is '"* is Joan of Arc"' (which is
-		flawed, but ignore that).  Furthermore, the wildcard in the search
-		results must be a proper noun.  That is, the first letter of the
-		name must be capitalized.
+    The generated Google search term is '"* is Joan of Arc"' (which is
+    flawed, but ignore that).  Furthermore, the wildcard in the search
+    results must be a proper noun.  That is, the first letter of the
+    name must be capitalized.
 
-		If no useful results come back, the error message will be "I don't
-		know who Joan of Arc is."
+    If no useful results come back, the error message will be "I don't
+    know who Joan of Arc is."
 
 About factoids.
 
-	Factoids need timestamps and source tagging.  We want to know where
-	data came from, and when it arrived.
+  Factoids need timestamps and source tagging.  We want to know where
+  data came from, and when it arrived.
 
-	(http://poe.perl.org/)    (is a type of)(source)
-	(nick!auth@host@network)  (is a type of)(source)
-	(1113614654)              (is a type of)(timestamp)
+  (http://poe.perl.org/)    (is a type of)(source)
+  (nick!auth@host@network)  (is a type of)(source)
+  (1113614654)              (is a type of)(timestamp)
 
-	So storing a simple factoid like "pigs have wings" requires:
+  So storing a simple factoid like "pigs have wings" requires:
 
-		Store (pigs)(have)(wings).
-		Store ((pigs)(have)(wings))(was said at)(1113614654)
-		Store (((pigs)(have)(wings))(was said at)(1113614654))
-					(was said by)(someone)
-	
-	This is crazy.
+    Store (pigs)(have)(wings).
+    Store ((pigs)(have)(wings))(was said at)(1113614654)
+    Store (((pigs)(have)(wings))(was said at)(1113614654))
+          (was said by)(someone)
+  
+  This is crazy.
 
-	"Simulating traditional tables" discusses this in depth.
+  "Simulating traditional tables" discusses this in depth.
 
 Simulating traditional tables.
 
-	Traditional tables got one up on triple stores: When you fetch a
-	record, you get all the associated fields.  This is totally unlike
-	triple stores, where you just get one little bit of a record.
-	Consider loading (pigs)(have)(wings) and all the associated text.
+  Traditional tables got one up on triple stores: When you fetch a
+  record, you get all the associated fields.  This is totally unlike
+  triple stores, where you just get one little bit of a record.
+  Consider loading (pigs)(have)(wings) and all the associated text.
 
-	So how to genericize this and then subsume it into the library?  My
-	half baked idea is to have an (is a field of) predicate.
+  So how to genericize this and then subsume it into the library?  My
+  half baked idea is to have an (is a field of) predicate.
 
-		$predicate (is a field of) $arc_type
+    $predicate (is a field of) $arc_type
 
-	For example:
+  For example:
 
-		(was said at)(is a field of)(factoid)
-		(was said by)(is a field of)(factoid)
+    (was said at)(is a field of)(factoid)
+    (was said by)(is a field of)(factoid)
 
-	When storing a factoid like "pigs have wings", the system goes:
+  When storing a factoid like "pigs have wings", the system goes:
 
-		Store: (pigs)(have)(wings)
-		Store: ((pigs)(have)(wings))(is an instance of)(factoid)
+    Store: (pigs)(have)(wings)
+    Store: ((pigs)(have)(wings))(is an instance of)(factoid)
 
-	And since it's a factoid, these "fields" are also added:
+  And since it's a factoid, these "fields" are also added:
 
-		((pigs)(have)(wings))(was said at)(1113614654)
-		((pigs)(have)(wings))(was said by)(source)
+    ((pigs)(have)(wings))(was said at)(1113614654)
+    ((pigs)(have)(wings))(was said by)(source)
 
-	This method has a serious problem.  The arc's source and timestamp
-	can't be correlated.  In SQL, for example, you would say:
+  This method has a serious problem.  The arc's source and timestamp
+  can't be correlated.  In SQL, for example, you would say:
 
-		SELECT factoid
-			WHERE
-						factoid.source = "source"
-				AND factoid.timestamp = 1113614654;
+    SELECT factoid
+      WHERE
+            factoid.source = "source"
+        AND factoid.timestamp = 1113614654;
 
-	In ThirdLobe's ArcStore, you can't do that.  Why?  Because in the
-	previous example (pigs)(have)(wings) may be said several times by
-	several different people, but you can't triangulate an associated
-	time and person to identify a particular time it was said by them.
+  In ThirdLobe's ArcStore, you can't do that.  Why?  Because in the
+  previous example (pigs)(have)(wings) may be said several times by
+  several different people, but you can't triangulate an associated
+  time and person to identify a particular time it was said by them.
 
-	As shown in a previous section, the most obvious way to solve this
-	is to associate a factoid with a field, then associate that
-	association with the other field.  This would chain nastily until
-	all the associated fields are used.
+  As shown in a previous section, the most obvious way to solve this
+  is to associate a factoid with a field, then associate that
+  association with the other field.  This would chain nastily until
+  all the associated fields are used.
 
-		(pigs)(have)(wings)   (1113614654)(is an instance of)(timestamp)
-			\                      /
-			 \                    /
-				(a)(was said at)(b)   (someone)(is an instance of)(source)
-							 \                       /
-								\                     /
-								 (a)(was said by)(b)
+    (pigs)(have)(wings)   (1113614654)(is an instance of)(timestamp)
+      \                      /
+       \                    /
+        (a)(was said at)(b)   (someone)(is an instance of)(source)
+               \                       /
+                \                     /
+                 (a)(was said by)(b)
 
-	As said before, this is crazy.  Not only does it generate arbitrary,
-	nasty trees, but it also becomes ugly to query.
+  As said before, this is crazy.  Not only does it generate arbitrary,
+  nasty trees, but it also becomes ugly to query.
 
-	You want to know what was said by "someone" at or around
-	"1113614654"?  You'll need to:
+  You want to know what was said by "someone" at or around
+  "1113614654"?  You'll need to:
 
-		Fetch: (someone)(is an instance of)(source)
+    Fetch: (someone)(is an instance of)(source)
 
-			$source = SELECT * FROM arc
-				WHERE
-							arc.sub = "someone"
-					AND arc.prd = "is an instance of"
-					AND arc.obj = "source";
+      $source = SELECT * FROM arc
+        WHERE
+              arc.sub = "someone"
+          AND arc.prd = "is an instance of"
+          AND arc.obj = "source";
 
-		Fetch: (1113614654)(is an instance of)(timestamp)
+    Fetch: (1113614654)(is an instance of)(timestamp)
 
-			$time = SELECT * FROM arc
-				WHERE
-							arc.sub = "1113614654"
-					AND arc.prd = "is an instance of"
-					AND arc.obj = "source";
-	
-	Then you'll need to fetch:
+      $time = SELECT * FROM arc
+        WHERE
+              arc.sub = "1113614654"
+          AND arc.prd = "is an instance of"
+          AND arc.obj = "source";
+  
+  Then you'll need to fetch:
 
-		()(was said at) $time
+    ()(was said at) $time
 
-			@said_at = SELECT * FROM arc
-				WHERE
-							arc.prd = "was said at"
-					AND arc.obj = $time;
+      @said_at = SELECT * FROM arc
+        WHERE
+              arc.prd = "was said at"
+          AND arc.obj = $time;
 
-		()(was said by) $source
+    ()(was said by) $source
 
-			@name = SELECT * FROM arc
-				WHERE
-							arc.sub in @said_at
-							arc.prd = "was said by"
-					AND arc.obj = $source;
+      @name = SELECT * FROM arc
+        WHERE
+              arc.sub in @said_at
+              arc.prd = "was said by"
+          AND arc.obj = $source;
 
-	This is crazy, but at least it's possible.  It becomes worse as the
-	number of conditions increases.
+  This is crazy, but at least it's possible.  It becomes worse as the
+  number of conditions increases.
 
-	So how do we get a highly optimized SQL engine to do all the work
-	for us?  Generate SQL with subselects on the fly!  I wonder how well
-	Postgres will handle that...
+  So how do we get a highly optimized SQL engine to do all the work
+  for us?  Generate SQL with subselects on the fly!  I wonder how well
+  Postgres will handle that...
 
-		my @factoids = SELECT * FROM arc
-			WHERE arc.sub in (
-							SELECT * FROM arc
-							WHERE   arc.prd = "was said at"
-								AND   arc.obj = $time
-						)
-				AND arc.prd = "was said by"
-				AND arc.obj = $source;
+    my @factoids = SELECT * FROM arc
+      WHERE arc.sub in (
+              SELECT * FROM arc
+              WHERE   arc.prd = "was said at"
+                AND   arc.obj = $time
+            )
+        AND arc.prd = "was said by"
+        AND arc.obj = $source;
 
-	That's not so bad, actually.
+  That's not so bad, actually.
 
 Using record arcs.
 
-	Integral suggested using arcs to represent specific records, and
-	having all the fields of each record refer to that.
+  Integral suggested using arcs to represent specific records, and
+  having all the fields of each record refer to that.
 
-	This idea falls down, because basically you're hanging all your
-	fields off the assertion that
+  This idea falls down, because basically you're hanging all your
+  fields off the assertion that
 
-		(pigs)(have)(wings") is-a record;
+    (pigs)(have)(wings") is-a record;
 
-	Therefore two instances of the same record can't have different
-	supporting details, such as source or utterance time.
+  Therefore two instances of the same record can't have different
+  supporting details, such as source or utterance time.
 
-	It's also silly because (pigs)(have)(wings) already is a record in
-	the arc database.  We don't need to formally say it.
+  It's also silly because (pigs)(have)(wings) already is a record in
+  the arc database.  We don't need to formally say it.
 
-	What's really needed are primary keys for "record" assertions.  For
-	example:
+  What's really needed are primary keys for "record" assertions.  For
+  example:
 
-		(pigs)(have)(wings) has-id 42;
+    (pigs)(have)(wings) has-id 42;
 
-	A new record is added every time someone asserts "pigs have wings".
+  A new record is added every time someone asserts "pigs have wings".
 
-		(pigs)(have)(wings) has-id 43;
-		(pigs)(have)(wings) has-id 44;
-	
-	Fields can then be hung off a particular instance of an assertion.
+    (pigs)(have)(wings) has-id 43;
+    (pigs)(have)(wings) has-id 44;
+  
+  Fields can then be hung off a particular instance of an assertion.
 
-		((pigs)(have)(wings) has-id 42)(was said by)(someone)
-		((pigs)(have)(wings) has-id 43)(was said by)(someone else)
+    ((pigs)(have)(wings) has-id 42)(was said by)(someone)
+    ((pigs)(have)(wings) has-id 43)(was said by)(someone else)
 
-	This is dangerously close to saying
+  This is dangerously close to saying
 
-		((pigs)(have)(wings) uttered-at $time)(was said by)(someone)
-		((pigs)(have)(wings) uttered-at $time)(was said by)(someone else)
+    ((pigs)(have)(wings) uttered-at $time)(was said by)(someone)
+    ((pigs)(have)(wings) uttered-at $time)(was said by)(someone else)
 
-	And its SQL look slike
+  And its SQL look slike
 
-		my $rec_42 =
-			SELECT * FROM arc WHERE arc.prd = "has-id" AND arc.obj = "42";
+    my $rec_42 =
+      SELECT * FROM arc WHERE arc.prd = "has-id" AND arc.obj = "42";
 
-		my @fields_42 =
-			SELECT * FROM arc WHERE arc.sub = $rec_42;
+    my @fields_42 =
+      SELECT * FROM arc WHERE arc.sub = $rec_42;
 
-	That's rather tidy.
+  That's rather tidy.
 
-	How to find record arcs with a certain timestamp?
+  How to find record arcs with a certain timestamp?
 
-		my @arcs =
-			SELECT  *
-			FROM    arc
-			WHERE   arc.prd = "has-id"
-				AND   arc.obj in (
-								SELECT  arc.sub
-								FROM    arc
-								WHERE   arc.prd = "was said at"
-									AND   arc.prd = "1113614654"
-							)
-		;
+    my @arcs =
+      SELECT  *
+      FROM    arc
+      WHERE   arc.prd = "has-id"
+        AND   arc.obj in (
+                SELECT  arc.sub
+                FROM    arc
+                WHERE   arc.prd = "was said at"
+                  AND   arc.prd = "1113614654"
+              )
+    ;
 
-	How to find record arcs said by someone at a certain time?
+  How to find record arcs said by someone at a certain time?
 
-		my @arcs =
-			SELECT  *
-			FROM    arc
-			WHERE   arc.prd = "has-id"
-				AND   arc.obj in (
-								SELECT  arc.sub
-								FROM    arc
-								WHERE   arc.prd = "was said at"
-									AND   arc.prd = "1113614654"
-							)
-				AND   arc.obj in (
-								SELECT  arc.sub
-								FROM    arc
-								WHERE   arc.prd = "was said by"
-									AND   arc.prd = "someone"
-							)
-		;
-	
-	And thus the set intersection is done.
+    my @arcs =
+      SELECT  *
+      FROM    arc
+      WHERE   arc.prd = "has-id"
+        AND   arc.obj in (
+                SELECT  arc.sub
+                FROM    arc
+                WHERE   arc.prd = "was said at"
+                  AND   arc.prd = "1113614654"
+              )
+        AND   arc.obj in (
+                SELECT  arc.sub
+                FROM    arc
+                WHERE   arc.prd = "was said by"
+                  AND   arc.prd = "someone"
+              )
+    ;
+  
+  And thus the set intersection is done.
 
 Versioning.
 
-	High resolution versioning is a pain in the butt.
+  High resolution versioning is a pain in the butt.
 
-	Essentially, each field attached to a record can have several
-	instances.  Each instance would be associated with a timestamp and a
-	username.  The youngest version of a field is current.
+  Essentially, each field attached to a record can have several
+  instances.  Each instance would be associated with a timestamp and a
+  username.  The youngest version of a field is current.
 
-		(record)(has-id)(42)
+    (record)(has-id)(42)
 
-	TODO - Finish this train of thought.
+  TODO - Finish this train of thought.
+
+-----
+
+2006-07-27 - Instances
+
+Versioning and complex concepts are a pain in the butt.  The pain
+stems from the fact that concrete concepts are not easily built from
+triples.  A "scrum meeting on $date and $time" is not
+
+	(((meeting type-of scrum) on $date) at $time)
+
+Rather it's the intersection of
+
+	meeting + scrum + date + time
+
+So anchor nodes in the database must be definable as an intersection
+of many axes.  A possible way might be to introduce a join table
+between nodes and arcs.
+
+"Nodes" become symbols.  Plain bits of text that represent atomic
+scraps of meaning.  I like having the symbols exist separately from
+the relations between things.  It means that things can be renamed or
+possibly translated from one symbol set to another without affecting
+how things relate to one another... but I'm rambling.
+
+symbol
+  seq           -- unique ID (pk)
+  text          -- human readable
+  hashed text   -- map the ambiguous world to the database
+
+The most obvious difference is that symbols no longer point to anchor
+nodes.  They don't point to anything, actually.
+
+Edges are pretty much "relations" but more graphy.  You got your
+triplet-based edges that relate a subject and object via some verb.
+
+edge
+  seq           -- unique ID (pk)
+	type          -- abstract, concrete, or relative
+  subject seq   -- subject anchor
+  verb seq      -- verb anchor
+  object seq    -- object anchor
+
+Edges with subject == verb == object == 0 are still anchors
+representing some concrete concept from the symbol table.
+
+The node table, however, is now a join between symbol and edge.  Each
+node represents a single instance of a symbol, so a symbol may be the
+subject
+
+anchor is a type of meeting
+anchor has the topic scrum
+anchor happens on date
+anchor happens at time
+
+node
+  seq
+  symbol seq
+  edge seq
+
