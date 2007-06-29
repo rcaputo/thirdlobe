@@ -4,15 +4,17 @@
 use warnings;
 use strict;
 
+use constant REBUILD => 0;
+
 use ThirdLobe::ArcStore;
 
 ### Connect to the arc database.
 
-my $kts = ThirdLobe::ArcStore->connect("dbi:Pg:dbname=know", "", "");
+my $kts = ThirdLobe::ArcStore->connect("dbi:Pg:host=127.0.0.1;port=15432;dbname=know", "", "");
 
 ### Destroy the database, and rebuild it from scratch.
 
-$kts->rebuild();
+REBUILD and $kts->rebuild();
 
 ### Define some arcs.
 
@@ -27,19 +29,21 @@ my @arcs = (
 	[ "name",                     "is a member of", "Richard Soderberg" ],
 );
 
-foreach (@arcs) {
-	my ($subject, $predicate, $object) = @$_;
-	$kts->arc_store($subject, $predicate, $object)
-		or die "couldn't store arc ($subject) ($predicate) ($object)";
+if (REBUILD) {
+	foreach (@arcs) {
+		my ($subject, $predicate, $object) = @$_;
+		$kts->arc_store($subject, $predicate, $object)
+			or die "couldn't store arc ($subject) ($predicate) ($object)";
+	}
+
+	### Define some meta-arcs.
+
+	my $email = $kts->arc_fetch("email", "is a member of", "Richard Soderberg");
+	$kts->arc_store($email, "has the value", "ideas\@crystalflame.net");
+
+	my $name = $kts->arc_fetch("name", "is a member of", "Richard Soderberg");
+	$kts->arc_store($name, "has the value", "Richard Soderberg");
 }
-
-### Define some meta-arcs.
-
-my $email = $kts->arc_fetch("email", "is a member of", "Richard Soderberg");
-$kts->arc_store($email, "has the value", "ideas\@crystalflame.net");
-
-my $name = $kts->arc_fetch("name", "is a member of", "Richard Soderberg");
-$kts->arc_store($name, "has the value", "Richard Soderberg");
 
 ### Start a little shell to investigate what's done.
 
@@ -49,6 +53,30 @@ my $prompt = "go: ";
 
 while (defined(my $input = $term->readline($prompt))) {
 	print "\n";
+
+	# new node
+
+	if (
+		$input =~
+		/^\s*new\s*\(\s*(.+?)\s*\)\s+\(\s*(.+?)\s*\)\s+\(\s*(.+?)\s*\)\s*$/
+	) {
+		my ($subject, $predicate, $object) = ($1, $2, $3);
+		$subject =~ s/\s+/ /g;
+		$predicate =~ s/\s+/ /g;
+		$object =~ s/\s+/ /g;
+
+		my $arc = $kts->arc_store($subject, $predicate, $object);
+
+		print(
+			"\tarc ", $arc->seq(),
+			" = (", $arc->sub_seq(),
+			",", $arc->prd_seq(),
+			",", $arc->obj_seq(),
+			") = ", $kts->arc_text($arc), "\n"
+		);
+
+		next;
+	}
 
 	# fetch node
 	if ($input =~ /^node\s+(\S.*?)\s*$/) {
@@ -94,6 +122,7 @@ while (defined(my $input = $term->readline($prompt))) {
 			"\t\tarc () (is a type of) (predicate)\n",
 			"\t\tarc () () ()\n",
 			"\t^C or Ctrl+C to quit.\n",
+			"\tnew (<text>) (<text>) (<text>) - creates and saves a new arc\n",
 		);
 		next;
 	}
