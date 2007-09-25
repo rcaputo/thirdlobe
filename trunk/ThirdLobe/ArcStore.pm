@@ -188,9 +188,38 @@ return sets may consume a lot of memory.
 sub arc_fetch {
 	my ($self, $subject, $predicate, $object) = @_;
 
-	my $sub = $self->anchor_fetch($subject);
-	my $prd = $self->anchor_fetch($predicate);
-	my $obj = $self->anchor_fetch($object);
+	my $sub;
+	if (defined $subject and length $subject) {
+		if (ref($subject) eq 'ThirdLobe::Arc') {
+			$sub = $subject;
+		}
+		else {
+			$sub = $self->anchor_fetch($subject);
+			return unless defined $sub;
+		}
+	}
+
+	my $prd;
+	if (defined $predicate and length $predicate) {
+		if (ref($predicate) eq 'ThirdLobe::Arc') {
+			$prd = $predicate;
+		}
+		else {
+			$prd = $self->anchor_fetch($predicate);
+			return unless defined $prd;
+		}
+	}
+
+	my $obj;
+	if (defined $object and length $object) {
+		if (ref($object) eq 'ThirdLobe::Arc') {
+			$obj = $object;
+		}
+		else {
+			$obj = $self->anchor_fetch($object);
+			return unless defined $obj;
+		}
+	}
 
 	my @arcs = $self->_db()->arc_from_arcs($sub, $prd, $obj);
 
