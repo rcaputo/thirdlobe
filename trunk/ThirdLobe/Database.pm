@@ -263,7 +263,7 @@ sub arc_from_arcs {
 		# The (0,0,0,0) arc doesn't officially exist.
 		next unless $row->{seq};
 
-		push @arcs, ThirdLobe::Arc->new($row);
+		push @arcs, ThirdLobe::Arc->new({ db => $self, %$row });
 	}
 	$sth->finish();
 
@@ -356,7 +356,7 @@ sub arc_from_seq {
 	# TODO - Error checking.  Return undef on failure.
 
 	my $row = $sth->fetchrow_hashref();
-	my $arc = ThirdLobe::Arc->new($row);
+	my $arc = ThirdLobe::Arc->new({ db => $self, %$row });
 
 	$sth->finish();
 	return $arc;
