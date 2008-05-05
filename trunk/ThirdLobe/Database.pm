@@ -56,8 +56,15 @@ sub node_add {
 	$sth->execute($arc->seq(), $key, $text) or die $sth->errstr();
 	$sth->finish();
 
-	# Fetch the node back out, with a sequence number and all.
-	return $self->node_from_text($text);
+	# Return the node represented by the recently inserted row.
+	return ThirdLobe::Node->new(
+		{
+			seq => $dbh->last_insert_id(undef, undef, "node", undef),
+			arc_seq => $arc->seq(),
+			key => $key,
+			val => $text,
+		}
+	);
 }
 
 =head2 _node_hash TEXT
@@ -230,8 +237,20 @@ sub arc_add {
 		or die $sth->errstr();
 	$sth->finish();
 
-	# Fetch the arc back out, with sequence number and all.
-	return $self->arc_from_arcs($sub_arc, $prd_arc, $obj_arc);
+	# Return an arc that represents the newly inserted row.
+	# Since we know the arcs, we can pre-cache them.
+	return ThirdLobe::Arc->new(
+		{
+			db => $self,
+			seq => $dbh->last_insert_id(undef, undef, "arc", undef),
+			sub_seq => $sub_arc->seq(),
+			prd_seq => $prd_arc->seq(),
+			obj_seq => $obj_arc->seq(),
+			sub_arc => $sub_arc,
+			prd_arc => $prd_arc,
+			obj_arc => $obj_arc,
+		}
+	);
 }
 
 =head2 arc_from_arcs SUBJECT_ARC, PREDICATE_ARC, OBJECT_ARC
@@ -247,15 +266,19 @@ Undefined parameters are treated as wildcards.
 =cut
 
 sub arc_from_arcs {
-	my ($self, $sub_arc, $prd_arc, $obj_arc) = @_;
+	my ($self, $sub_arc, $prd_arc, $obj_arc, $limit) = @_;
 	my $dbh = $self->[DBH];
 
 	my ($where_clause, @values) = $self->build_arc_query(
 		$sub_arc, $prd_arc, $obj_arc
 	);
 
-	my $sth = $dbh->prepare_cached("SELECT * FROM arc" . $where_clause);
-	$sth->execute(@values);
+	my $sql = "SELECT * FROM arc " . $where_clause;
+	$sql .= " LIMIT $limit" if $limit;
+	warn $sql;
+
+	my $sth = $dbh->prepare_cached($sql) or die $dbh->errstr;
+	$sth->execute(@values) or die $sth->errstr;
 
 	my (%memo, @arcs);
 	while (my $row = $sth->fetchrow_hashref()) {
@@ -290,10 +313,11 @@ sub arc_count {
 		$sub_arc, $prd_arc, $obj_arc
 	);
 
-	my $sth = $dbh->prepare_cached(
-		"SELECT count(seq) FROM arc" .  $where_clause
-	);
-	$sth->execute(@values);
+	my $sql = "SELECT count(seq) FROM arc" . $where_clause;
+	warn $sql;
+
+	my $sth = $dbh->prepare_cached($sql) or die $dbh->errstr;
+	$sth->execute(@values) or die $sth->errstr;
 
 	my @row = $sth->fetchrow_array();
 	$sth->finish();

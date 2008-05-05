@@ -148,6 +148,8 @@ sub arc_store {
 		$obj = $self->anchor_store($object);
 	}
 
+	# TODO - Fetch the arc and return it, otherwise add it.
+
 	my @arcs = $db->arc_from_arcs($sub, $prd, $obj);
 	unless (@arcs) {
 		@arcs = $db->arc_add($sub, $prd, $obj);
@@ -186,7 +188,7 @@ return sets may consume a lot of memory.
 =cut
 
 sub arc_fetch {
-	my ($self, $subject, $predicate, $object) = @_;
+	my ($self, $subject, $predicate, $object, $limit) = @_;
 
 	my $sub;
 	if (defined $subject and length $subject) {
@@ -221,7 +223,7 @@ sub arc_fetch {
 		}
 	}
 
-	my @arcs = $self->_db()->arc_from_arcs($sub, $prd, $obj);
+	my @arcs = $self->_db()->arc_from_arcs($sub, $prd, $obj, $limit);
 
 	return unless @arcs;
 	return @arcs if wantarray;
@@ -243,6 +245,7 @@ anchor_store() is mostly used internally by ThirdLobe::ArcStore.
 sub anchor_store {
 	my ($self, $text) = @_;
 
+	# TODO - Return node if it exists, otherwise add and return.
 	my $node = $self->_db()->node_from_text($text);
 	return $self->_db()->arc_from_seq($node->arc_seq()) if $node;
 
