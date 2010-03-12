@@ -1,5 +1,3 @@
-# $Id$
-
 =head1 NAME
 
 ThirdLobe::Arc - a capsule containing an RDF-like triple
@@ -113,7 +111,7 @@ Thank you for using it.
 
 =head1 COPYRIGHT
 
-Copyright 2005, Rocco Caputo.
+Copyright 2005-2010, Rocco Caputo.
 
 This library is free software; you can use, redistribute it, and/or
 modify it under the same terms as Perl itself.

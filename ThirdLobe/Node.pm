@@ -1,5 +1,3 @@
-# $Id$
-
 =head1 NAME
 
 ThirdLobe::Node - a capsule containing the text to represent an idea
@@ -50,7 +48,7 @@ Thank you for using it.
 
 =head1 COPYRIGHT
 
-Copyright 2005, Rocco Caputo.
+Copyright 2005-2010, Rocco Caputo.
 
 This library is free software; you can use, redistribute it, and/or
 modify it under the same terms as Perl itself.

@@ -1,5 +1,3 @@
-$Id$
-
 Schema
 
 	Third Lobe has two tables: Node and Arc.  Node rows describe
@@ -533,4 +531,3 @@ node
   seq
   symbol seq
   edge seq
-
